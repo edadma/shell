@@ -151,7 +151,6 @@ object Main extends App {
 
     while (waiting_for.nonEmpty) {
       wait_result = waitpid(-1, null, 0)
-      println(s"- waitpid returned ${wait_result}")
       waiting_for = waiting_for - wait_result
     }
 
