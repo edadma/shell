@@ -7,29 +7,30 @@ import scala.scalanative.libc.stdlib._
 import scala.scalanative.libc.errno._
 import scala.scalanative.libc.string._
 import scala.scalanative.unsigned._
-
 import waitlib._
 import linenoiselib._
 
+import scala.collection.mutable
+
 object Main extends App {
-  val HISTORY_FILE  = c"history.txt"
-  var line: CString = _
-
-  linenoiseHistorySetMaxLen(100)
-  linenoiseHistoryLoad(HISTORY_FILE)
-
-  while ({ line = linenoise(c"hello> "); line != null }) {
-    val s = fromCString(line).trim
-
-    free(line)
-
-    if (s nonEmpty)
-      Zone { implicit z =>
-        println(s)
-        linenoiseHistoryAdd(toCString(s))
-        linenoiseHistorySave(HISTORY_FILE)
-      }
-  }
+//  val HISTORY_FILE  = c"history.txt"
+//  var line: CString = _
+//
+//  linenoiseHistorySetMaxLen(100)
+//  linenoiseHistoryLoad(HISTORY_FILE)
+//
+//  while ({ line = linenoise(c"hello> "); line != null }) {
+//    val s = fromCString(line).trim
+//
+//    free(line)
+//
+//    if (s nonEmpty)
+//      Zone { implicit z =>
+//        println(s)
+//        linenoiseHistoryAdd(toCString(s))
+//        linenoiseHistorySave(HISTORY_FILE)
+//      }
+//  }
 
 //  if (args.isEmpty) {
 //    println("bye")
@@ -45,6 +46,117 @@ object Main extends App {
 //    }
 //
 //  println(s"wait status ${status}")
+
+  pipeMany(STDIN_FILENO, STDOUT_FILENO, Seq(Seq("/bin/ls", "."), Seq("/usr/bin/sort", "-r")))
+
+  def pipeTwo(input: Int, output: Int, proc1: Seq[String], proc2: Seq[String]): Int = {
+    val pipe_array = stackalloc[Int](2)
+    val pipe_ret   = pipe(pipe_array)
+
+    println(s"pipe() returned $pipe_ret")
+
+    val output_pipe = pipe_array(1)
+    val input_pipe  = pipe_array(0)
+    val proc1_pid =
+      doFork { () =>
+        if (input != 0) {
+          println(s"proc ${getpid()}: about to dup $input to stdin")
+          dup2(input, STDIN_FILENO)
+        }
+
+        println(s"proc 1 about to dup $output_pipe to stdout")
+        dup2(output_pipe, STDOUT_FILENO)
+        println(s"process ${getpid()} about to runCommand")
+        runCommand(proc1)
+      }
+    val proc2_pid =
+      doFork { () =>
+        println(s"proc ${getpid()}: about to dup")
+        dup2(input_pipe, STDIN_FILENO)
+
+        if (output != 1) {
+          dup2(output, STDOUT_FILENO)
+        }
+
+        close(output_pipe)
+        println(s"process ${getpid()} about to runCommand")
+        runCommand(proc2)
+      }
+
+    close(input)
+    close(output_pipe)
+    close(input_pipe)
+
+    val waiting_for = Seq(proc1_pid, proc2_pid)
+
+    println(s"waiting for procs: $waiting_for")
+
+    val r1 = waitpid(-1, null, 0)
+
+    println(s"proc $r1 returned")
+
+    val r2 = waitpid(-1, null, 0)
+
+    println(s"proc $r2 returned")
+    r2
+  }
+
+  def pipeMany(input: Int, output: Int, procs: Seq[Seq[String]]): Int = {
+    val pipe_array = stackalloc[Int]((2 * (procs.size - 1)).toUInt)
+    var input_fds  = mutable.ArrayBuffer[Int](input)
+    var output_fds = mutable.ArrayBuffer[Int]()
+
+    // create our array of pipes
+    for (i <- 0 until (procs.size - 1)) {
+      val array_offset = i * 2
+      val pipe_ret     = pipe(pipe_array + array_offset)
+
+      output_fds += pipe_array(array_offset + 1)
+      input_fds += pipe_array(array_offset)
+    }
+
+    output_fds += output
+
+    val procsWithFds = (procs, input_fds, output_fds).zipped
+    val pids = for ((proc, input_fd, output_fd) <- procsWithFds) yield {
+      doFork { () =>
+        // close all pipes that this process won't be using.
+        for (p <- 0 until (2 * (procs.size - 1)))
+          if (pipe_array(p) != input_fd && pipe_array(p) != output_fd)
+            close(pipe_array(p))
+
+        // reassign STDIN if we aren't at the front of the pipeline
+        if (input_fd != input) {
+          close(STDIN_FILENO)
+          dup2(input_fd, STDIN_FILENO)
+        }
+
+        // reassign STDOUT if we aren't at the end of the pipeline
+        if (output_fd != output) {
+          close(STDOUT_FILENO)
+          dup2(output_fd, STDOUT_FILENO)
+        }
+
+        runCommand(proc)
+      }
+    }
+
+    for (i <- 0 until (2 * (procs.size - 1)))
+      close(pipe_array(i))
+
+    close(input)
+
+    var waiting_for      = pids.toSet
+    var wait_result: Int = 0
+
+    while (waiting_for.nonEmpty) {
+      wait_result = waitpid(-1, null, 0)
+      println(s"- waitpid returned ${wait_result}")
+      waiting_for = waiting_for - wait_result
+    }
+
+    return wait_result
+  }
 
   def runOneAtATime(commands: Seq[Seq[String]]): Unit =
     for (command <- commands)
