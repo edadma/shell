@@ -76,14 +76,6 @@ object Main extends App {
     }
   }
 
-  def runOneAtATime(commands: Seq[Seq[String]]): Unit = {
-    for (command <- commands) {
-      doAndAwait { () =>
-        runCommand(command)
-      }
-    }
-  }
-
   def await(pid: Int): Int = {
     val status = stackalloc[Int]
 
