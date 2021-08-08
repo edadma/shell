@@ -11,16 +11,6 @@ import scala.scalanative.unsigned._
 import waitlib._
 import linenoiselib._
 
-@extern
-object linenoiselib {
-  def linenoise(prompt: CString): CString           = extern
-  def linenoiseHistoryAdd(line: CString): CInt      = extern
-  def linenoiseHistorySetMaxLen(len: CInt): CInt    = extern
-  def linenoiseHistorySave(filename: CString): CInt = extern
-  def linenoiseHistoryLoad(filename: CString): CInt = extern
-  def linenoiseSetMultiLine(ml: CInt): Unit         = extern
-}
-
 object Main extends App {
   val HISTORY_FILE  = c"history.txt"
   var line: CString = _
@@ -137,9 +127,4 @@ object Main extends App {
 
     dst(src.length) = '\u0000'
   }
-}
-
-@extern
-object waitlib {
-  def waitpid(pid: Int, status: Ptr[Int], options: Int): Int = extern
 }
