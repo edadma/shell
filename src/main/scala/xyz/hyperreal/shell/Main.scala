@@ -7,36 +7,47 @@ import scala.scalanative.libc.stdlib._
 import scala.scalanative.libc.errno._
 import scala.scalanative.libc.string._
 import scala.scalanative.unsigned._
-
 import unistd._
 import waitlib._
 import linenoiselib._
 
+import scala.annotation.tailrec
 import scala.collection.mutable
 
 object Main extends App {
-  val HISTORY_FILE  = c"history.txt"
-  var line: CString = _
+  val HISTORY_FILE = c"history.txt"
+  val BUFSIZE      = 256.toUInt
 
   linenoiseHistorySetMaxLen(100)
   linenoiseHistoryLoad(HISTORY_FILE)
 
-  while ({ line = linenoise(c"> "); line != null }) {
-    val s = fromCString(line).trim
+  @tailrec
+  def repl(): Unit = {
+    val cwd  = stackalloc[Byte](BUFSIZE)
+    val scwd = if (getcwd(cwd, BUFSIZE) == null) "" else fromCString(cwd)
 
-    free(line)
+    val prompt = s"$scwd> "
+    val line   = Zone(implicit z => linenoise(toCString(prompt)))
 
-    if (s nonEmpty) {
-      val commands = s.split('|').toSeq map (_.trim) map (_.split("\\s+").toSeq)
+    if (line != null) {
+      val s = fromCString(line).trim
 
-      pipeMany(STDIN_FILENO, STDOUT_FILENO, commands)
+      free(line)
 
-      Zone { implicit z =>
-        linenoiseHistoryAdd(toCString(s))
+      if (s nonEmpty) {
+        val commands = s.split('|').toSeq map (_.trim) map (_.split("\\s+").toSeq)
+
+        pipeMany(STDIN_FILENO, STDOUT_FILENO, commands)
+
+        Zone(implicit z => linenoiseHistoryAdd(toCString(s)))
         linenoiseHistorySave(HISTORY_FILE)
       }
+
+      repl()
     }
   }
+
+  repl()
 
 //  val status =
 //    doAndAwait { () =>
