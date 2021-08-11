@@ -9,31 +9,36 @@ import scala.scalanative.libc.string._
 import scala.scalanative.unsigned._
 import unistd._
 import waitlib._
-import linenoiselib._
 
 import scala.annotation.tailrec
 import scala.collection.mutable
+
+@link("readline")
+@extern
+object rl {
+  def readline(prompt: CString): CString = extern
+
+  def add_history(line: CString): Unit = extern
+}
 
 object Main extends App {
   val HISTORY_FILE = c"history.txt"
   val BUFSIZE      = 256.toUInt
 
-  linenoiseHistorySetMaxLen(100)
-  linenoiseHistoryLoad(HISTORY_FILE)
-
   val homeDir = System.getProperty("user.home")
 
   @tailrec
   def repl(): Unit = {
+    import Console._
+
     val cwd  = stackalloc[Byte](BUFSIZE)
     val scwd = if (getcwd(cwd, BUFSIZE) == null) "" else fromCString(cwd)
     val pcwd =
       if (scwd startsWith homeDir) '~' +: (scwd drop homeDir.length)
       else scwd
-
-//    val prompt = s"${Console.CYAN}$pcwd${Console.RESET}> "
-    val prompt = s"$pcwd> "
-    val line   = Zone(implicit z => linenoise(toCString(prompt)))
+    val prompt = s"$CYAN$pcwd$RESET> "
+//    val prompt = s"$pcwd> "
+    val line = Zone(implicit z => rl.readline(toCString(prompt)))
 
     if (line != null) {
       val s = fromCString(line).trim
@@ -51,10 +56,10 @@ object Main extends App {
             case _              => pipeMany(STDIN_FILENO, STDOUT_FILENO, commands)
           }
 
-          linenoiseHistoryAdd(toCString(s))
+          rl.add_history(toCString(s))
         }
 
-        linenoiseHistorySave(HISTORY_FILE)
+//        linenoiseHistorySave(HISTORY_FILE)
       }
 
       repl()
@@ -62,6 +67,54 @@ object Main extends App {
   }
 
   repl()
+
+  //  val HISTORY_FILE = c"history.txt"
+//  val BUFSIZE      = 256.toUInt
+//
+//  linenoiseHistorySetMaxLen(100)
+//  linenoiseHistoryLoad(HISTORY_FILE)
+//
+//  val homeDir = System.getProperty("user.home")
+//
+//  @tailrec
+//  def repl(): Unit = {
+//    val cwd  = stackalloc[Byte](BUFSIZE)
+//    val scwd = if (getcwd(cwd, BUFSIZE) == null) "" else fromCString(cwd)
+//    val pcwd =
+//      if (scwd startsWith homeDir) '~' +: (scwd drop homeDir.length)
+//      else scwd
+//
+////    val prompt = s"${Console.CYAN}$pcwd${Console.RESET}> "
+//    val prompt = s"$pcwd> "
+//    val line   = Zone(implicit z => linenoise(toCString(prompt)))
+//
+//    if (line != null) {
+//      val s = fromCString(line).trim
+//
+//      free(line)
+//
+//      if (s nonEmpty) {
+//        val commands = s.split('|').toList map (_.trim) map (_.split("\\s+").toList)
+//
+//        Zone { implicit z =>
+//          commands.head match {
+//            case Seq("cd", dir) => chdir(toCString(dir))
+//            case Seq("cd")      => chdir(toCString(homeDir))
+//            case "cd" :: _      => println("'cd' takes zero or one parameters")
+//            case _              => pipeMany(STDIN_FILENO, STDOUT_FILENO, commands)
+//          }
+//
+//          linenoiseHistoryAdd(toCString(s))
+//        }
+//
+//        linenoiseHistorySave(HISTORY_FILE)
+//      }
+//
+//      repl()
+//    }
+//  }
+//
+//  repl()
 
   def pipeMany(input: Int, output: Int, procs: Seq[Seq[String]]): Int = {
     val pipe_array = stackalloc[Int]((2 * (procs.size - 1)).toUInt)
