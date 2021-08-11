@@ -1,4 +1,4 @@
--scala-native
-=============
+shell
+=====
 
-This is a template project for Scala Native.
+This is a simple Linux shell written in Scala Native based on code from the wonderful book, "Modern Systems Programming with Scala Native" by Richard Whaling.
