@@ -21,6 +21,8 @@ object Main extends App {
     val HISTORY_FILE = toCString(s"$homeDir/.dish_history")
     val BUFSIZE      = 256.toUInt
 
+    var historyExists = rl.read_history(HISTORY_FILE)
+
     @tailrec
     def repl(): Unit = {
       import Console._
@@ -49,14 +51,19 @@ object Main extends App {
           }
 
           rl.add_history(toCString(s))
-          rl.write_history(HISTORY_FILE)
+
+          if (historyExists == 0)
+            rl.append_history(1, HISTORY_FILE)
+          else {
+            historyExists = 0
+            rl.write_history(HISTORY_FILE)
+          }
         }
 
         repl()
       }
     }
 
-    rl.read_history(HISTORY_FILE)
     repl()
   }
 
