@@ -8,6 +8,7 @@ import scala.scalanative.libc.errno._
 import scala.scalanative.libc.string._
 import scala.scalanative.unsigned._
 
+import unistd._
 import waitlib._
 import linenoiselib._
 
@@ -200,7 +201,7 @@ object Main extends App {
       val arg_array   = makeStringArray(args)
       val env_strings = env map { case (k, v) => s"$k=$v" } toSeq
       val env_array   = makeStringArray(env_strings)
-      val r           = execve(fname, arg_array, env_array)
+      val r           = execvpe(fname, arg_array, env_array)
 
       if (r != 0) {
         val err = errno
