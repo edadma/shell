@@ -21,12 +21,18 @@ object Main extends App {
   linenoiseHistorySetMaxLen(100)
   linenoiseHistoryLoad(HISTORY_FILE)
 
+  val homeDir = System.getProperty("user.home")
+
   @tailrec
   def repl(): Unit = {
     val cwd  = stackalloc[Byte](BUFSIZE)
     val scwd = if (getcwd(cwd, BUFSIZE) == null) "" else fromCString(cwd)
+    val pcwd =
+      if (scwd startsWith homeDir) '~' +: (scwd drop homeDir.length)
+      else scwd
 
-    val prompt = s"$scwd> "
+//    val prompt = s"${Console.CYAN}$pcwd${Console.RESET}> "
+    val prompt = s"$pcwd> "
     val line   = Zone(implicit z => linenoise(toCString(prompt)))
 
     if (line != null) {
@@ -48,14 +54,6 @@ object Main extends App {
   }
 
   repl()
-
-//  val status =
-//    doAndAwait { () =>
-//      println(s"in child, about to exec command: ${args.toSeq}")
-//      runCommand(args)
-//    }
-//
-//  println(s"wait status $status")
 
   def pipeMany(input: Int, output: Int, procs: Seq[Seq[String]]): Int = {
     val pipe_array = stackalloc[Int]((2 * (procs.size - 1)).toUInt)
@@ -247,3 +245,11 @@ object Main extends App {
     dst(src.length) = '\u0000'
   }
 }
+
+//  val status =
+//    doAndAwait { () =>
+//      println(s"in child, about to exec command: ${args.toSeq}")
+//      runCommand(args)
+//    }
+//
+//  println(s"wait status $status")
