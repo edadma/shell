@@ -41,11 +41,19 @@ object Main extends App {
       free(line)
 
       if (s nonEmpty) {
-        val commands = s.split('|').toSeq map (_.trim) map (_.split("\\s+").toSeq)
+        val commands = s.split('|').toList map (_.trim) map (_.split("\\s+").toList)
 
-        pipeMany(STDIN_FILENO, STDOUT_FILENO, commands)
+        Zone { implicit z =>
+          commands.head match {
+            case Seq("cd", dir) => chdir(toCString(dir))
+            case Seq("cd")      => chdir(toCString(homeDir))
+            case "cd" :: _      => println("'cd' takes zero or one parameters")
+            case _              => pipeMany(STDIN_FILENO, STDOUT_FILENO, commands)
+          }
 
-        Zone(implicit z => linenoiseHistoryAdd(toCString(s)))
+          linenoiseHistoryAdd(toCString(s))
+        }
+
         linenoiseHistorySave(HISTORY_FILE)
       }
 
