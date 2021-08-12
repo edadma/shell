@@ -17,56 +17,58 @@ import scala.annotation.tailrec
 import scala.collection.mutable
 
 object Main extends App {
-  Zone { implicit z =>
-    val homeDir      = System.getProperty("user.home")
-    val HISTORY_FILE = toCString(s"$homeDir/.dish_history")
-    val BUFSIZE      = 256.toUInt
+  println(CommandParser.parsePipeline("ls -l | sort"))
 
-    var historyExists = rl.read_history(HISTORY_FILE)
-
-    @tailrec
-    def repl(): Unit = {
-      import Console._
-
-      val cwd  = stackalloc[Byte](BUFSIZE)
-      val scwd = if (getcwd(cwd, BUFSIZE) == null) "" else fromCString(cwd)
-      val pcwd =
-        if (scwd startsWith homeDir) '~' +: (scwd drop homeDir.length)
-        else scwd
-      val prompt = s"$CYAN$pcwd$RESET> "
-      val line   = rl.readline(toCString(prompt))
-
-      if (line != null) {
-        val s = fromCString(line).trim
-
-        free(line)
-
-        if (s nonEmpty) {
-          val commands = s.split('|').toList map (_.trim) map (_.split("\\s+") flatMap expand toList)
-
-          commands.head match {
-            case Seq("cd", dir) => chdir(toCString(dir))
-            case Seq("cd")      => chdir(toCString(homeDir))
-            case "cd" :: _      => println("'cd' takes zero or one parameters")
-            case _              => pipeMany(STDIN_FILENO, STDOUT_FILENO, commands)
-          }
-
-          rl.add_history(toCString(s))
-
-          if (historyExists == 0)
-            rl.append_history(1, HISTORY_FILE)
-          else {
-            historyExists = 0
-            rl.write_history(HISTORY_FILE)
-          }
-        }
-
-        repl()
-      }
-    }
-
-    repl()
-  }
+//  Zone { implicit z =>
+//    val homeDir      = System.getProperty("user.home")
+//    val HISTORY_FILE = toCString(s"$homeDir/.dish_history")
+//    val BUFSIZE      = 256.toUInt
+//
+//    var historyExists = rl.read_history(HISTORY_FILE)
+//
+//    @tailrec
+//    def repl(): Unit = {
+//      import Console._
+//
+//      val cwd  = stackalloc[Byte](BUFSIZE)
+//      val scwd = if (getcwd(cwd, BUFSIZE) == null) "" else fromCString(cwd)
+//      val pcwd =
+//        if (scwd startsWith homeDir) '~' +: (scwd drop homeDir.length)
+//        else scwd
+//      val prompt = s"$CYAN$pcwd$RESET> "
+//      val line   = rl.readline(toCString(prompt))
+//
+//      if (line != null) {
+//        val s = fromCString(line).trim
+//
+//        free(line)
+//
+//        if (s nonEmpty) {
+//          val commands = s.split('|').toList map (_.trim) map (_.split("\\s+") flatMap expand toList)
+//
+//          commands.head match {
+//            case Seq("cd", dir) => chdir(toCString(dir))
+//            case Seq("cd")      => chdir(toCString(homeDir))
+//            case "cd" :: _      => println("'cd' takes zero or one parameters")
+//            case _              => pipeMany(STDIN_FILENO, STDOUT_FILENO, commands)
+//          }
+//
+//          rl.add_history(toCString(s))
+//
+//          if (historyExists == 0)
+//            rl.append_history(1, HISTORY_FILE)
+//          else {
+//            historyExists = 0
+//            rl.write_history(HISTORY_FILE)
+//          }
+//        }
+//
+//        repl()
+//      }
+//    }
+//
+//    repl()
+//  }
 
   def expand(pattern: String): List[String] = Zone { implicit z =>
     val globbuf = stackalloc[GlobT]
@@ -133,7 +135,11 @@ object Main extends App {
     for (i <- 0 until (2 * (procs.size - 1)))
       close(pipe_array(i))
 
-    //close(input)
+    if (input != STDIN_FILENO)
+      close(input)
+
+    if (output != STDOUT_FILENO)
+      close(output)
 
     var waiting_for      = pids.toSet
     var wait_result: Int = 0

@@ -12,7 +12,14 @@ nativeMode := "debug"
 
 nativeLinkingOptions := Seq(s"-L/${baseDirectory.value}/native-lib")
 
-scalacOptions ++= Seq( "-deprecation", "-feature", "-unchecked", "-language:postfixOps", "-language:implicitConversions", "-language:existentials" )
+scalacOptions ++= Seq(
+  "-deprecation",
+  "-feature",
+  "-unchecked",
+  "-language:postfixOps",
+  "-language:implicitConversions",
+  "-language:existentials"
+)
 
 organization := "xyz.hyperreal"
 
@@ -26,13 +33,17 @@ resolvers += "Typesafe Repository" at "https://repo.typesafe.com/typesafe/releas
 
 resolvers += Resolver.githubPackages("edadma")
 
-Compile / mainClass := Some( "xyz.hyperreal." + name.value.replace('-', '_') + ".Main" )
+Compile / mainClass := Some("xyz.hyperreal." + name.value.replace('-', '_') + ".Main")
 
 licenses := Seq("ISC" -> url("https://opensource.org/licenses/ISC"))
 
 homepage := Some(url("https://github.com/edadma/" + name.value))
 
 libraryDependencies += "org.scalatest" %%% "scalatest" % "3.2.9" % "test"
+
+libraryDependencies ++= Seq(
+  "org.scala-lang.modules" %%% "scala-parser-combinators" % "2.0.0"
+)
 
 libraryDependencies ++= Seq(
   "com.github.scopt" %%% "scopt" % "4.0.1"
@@ -42,7 +53,9 @@ publishMavenStyle := true
 
 Test / publishArtifact := false
 
-pomIncludeRepository := { _ => false }
+pomIncludeRepository := { _ =>
+  false
+}
 
 pomExtra :=
   <scm>
