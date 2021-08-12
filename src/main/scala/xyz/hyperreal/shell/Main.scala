@@ -11,6 +11,7 @@ import scala.scalanative.unsigned._
 import unistd._
 import waitlib._
 import xyz.hyperreal.shell.{GNUReadline => rl}
+import Glob._
 
 import scala.annotation.tailrec
 import scala.collection.mutable
@@ -41,7 +42,7 @@ object Main extends App {
         free(line)
 
         if (s nonEmpty) {
-          val commands = s.split('|').toList map (_.trim) map (_.split("\\s+").toList)
+          val commands = s.split('|').toList map (_.trim) map (_.split("\\s+") flatMap expand toList)
 
           commands.head match {
             case Seq("cd", dir) => chdir(toCString(dir))
@@ -65,6 +66,28 @@ object Main extends App {
     }
 
     repl()
+  }
+
+  def expand(pattern: String): List[String] = Zone { implicit z =>
+    val globbuf = stackalloc[GlobT]
+    val pathc   = stackalloc[CSize]
+    val pathv   = stackalloc[Ptr[CString]]
+
+    if (globHelper(toCString(pattern), globbuf, pathc, pathv) == 0) {
+      val list =
+        for (i <- 0 until (!pathc).toInt)
+          yield {
+            val array = !pathv
+
+            fromCString(array(i))
+          }
+
+      val pglob = !globbuf
+
+      globfree(pglob)
+      free(pglob)
+      list.toList
+    } else List(pattern)
   }
 
   def pipeMany(input: Int, output: Int, procs: Seq[Seq[String]]): Int = {
