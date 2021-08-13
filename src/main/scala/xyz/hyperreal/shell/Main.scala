@@ -43,28 +43,6 @@ object Main extends App {
         free(line)
 
         if (s nonEmpty) {
-          val PipelineAST(commands) = CommandParser.parsePipeline(s)
-
-          commands.head match {
-            case CommandAST(_, "cd", List(ArgumentAST(_, dir)), Nil)  => chdir(toCString(tilde(dir)))
-            case CommandAST(_, "cd", Nil, Nil)                        => chdir(toCString(homeDir))
-            case CommandAST(_, "cd", _, _)                            => println("invalid 'cd' command")
-            case CommandAST(_, "exit", List(ArgumentAST(_, st)), Nil) => sys.exit(toCString(st).toInt)
-            case CommandAST(_, "exit", Nil, Nil)                      => sys.exit()
-            case CommandAST(_, "exit", _, _)                          => println("invalid 'exit' command")
-            case _ =>
-              val cs = commands map {
-                case CommandAST(pos, cmd, args, redirs) =>
-                  tilde(cmd) +: (args flatMap { case ArgumentAST(pos, arg) => Globbing.expand(tilde(arg)) })
-              }
-
-              try {
-                pipeMany(STDIN_FILENO, STDOUT_FILENO, cs)
-              } catch {
-                case e: Exception =>
-              }
-          }
-
           val prev = rl.history_get(rl.history_base + rl.history_length - 1)
 
           if (prev == null || fromCString(!prev) != s) {
@@ -76,6 +54,45 @@ object Main extends App {
               historyExists = 0
               rl.write_history(HISTORY_FILE)
             }
+          }
+
+          try {
+            val PipelineAST(commands) = CommandParser.parsePipeline(s)
+
+            commands.head match {
+              case CommandAST(_, "cd", List(ArgumentAST(_, dir)), Nil)  => chdir(toCString(tilde(dir)))
+              case CommandAST(_, "cd", Nil, Nil)                        => chdir(toCString(homeDir))
+              case CommandAST(_, "cd", _, _)                            => println("invalid 'cd' command")
+              case CommandAST(_, "exit", List(ArgumentAST(_, st)), Nil) => sys.exit(toCString(st).toInt)
+              case CommandAST(_, "exit", Nil, Nil)                      => sys.exit()
+              case CommandAST(_, "exit", _, _)                          => println("invalid 'exit' command")
+              case _ =>
+                commands.init foreach {
+                  _.redirs foreach {
+                    case RedirectionAST(pos, ">" | ">>", _) =>
+                      problem(pos, "output redirection not allowed here")
+                    case _ =>
+                  }
+                }
+
+                commands.tail foreach {
+                  _.redirs foreach {
+                    case RedirectionAST(pos, "<", _) =>
+                      problem(pos, "input redirection not allowed here")
+                    case _ =>
+                  }
+                }
+
+                val cs = commands map {
+                  case CommandAST(pos, cmd, args, redirs) =>
+                    tilde(cmd) +: (args flatMap { case ArgumentAST(pos, arg) => Globbing.expand(tilde(arg)) })
+                }
+
+                pipeMany(STDIN_FILENO, STDOUT_FILENO, cs)
+            }
+          } catch {
+            case e: RuntimeException if e.getClass.getName == "java.lang.RuntimeException" =>
+            case e: Throwable                                                              => e.printStackTrace()
           }
         }
 
