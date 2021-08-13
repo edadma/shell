@@ -11,85 +11,81 @@ import scala.scalanative.unsigned._
 import unistd._
 import waitlib._
 import xyz.hyperreal.shell.{GNUReadline => rl}
-import Glob._
+import xyz.hyperreal.snutils.Globbing
 
 import scala.annotation.tailrec
 import scala.collection.mutable
 
 object Main extends App {
-  println(CommandParser.parsePipeline("ls -l | sort"))
+//  println(CommandParser.parsePipeline("grep asdf <input | sort >output"))
 
-//  Zone { implicit z =>
-//    val homeDir      = System.getProperty("user.home")
-//    val HISTORY_FILE = toCString(s"$homeDir/.dish_history")
-//    val BUFSIZE      = 256.toUInt
-//
-//    var historyExists = rl.read_history(HISTORY_FILE)
-//
-//    @tailrec
-//    def repl(): Unit = {
-//      import Console._
-//
-//      val cwd  = stackalloc[Byte](BUFSIZE)
-//      val scwd = if (getcwd(cwd, BUFSIZE) == null) "" else fromCString(cwd)
-//      val pcwd =
-//        if (scwd startsWith homeDir) '~' +: (scwd drop homeDir.length)
-//        else scwd
-//      val prompt = s"$CYAN$pcwd$RESET> "
-//      val line   = rl.readline(toCString(prompt))
-//
-//      if (line != null) {
-//        val s = fromCString(line).trim
-//
-//        free(line)
-//
-//        if (s nonEmpty) {
-//          val commands = s.split('|').toList map (_.trim) map (_.split("\\s+") flatMap expand toList)
-//
-//          commands.head match {
-//            case Seq("cd", dir) => chdir(toCString(dir))
-//            case Seq("cd")      => chdir(toCString(homeDir))
-//            case "cd" :: _      => println("'cd' takes zero or one parameters")
-//            case _              => pipeMany(STDIN_FILENO, STDOUT_FILENO, commands)
-//          }
-//
-//          rl.add_history(toCString(s))
-//
-//          if (historyExists == 0)
-//            rl.append_history(1, HISTORY_FILE)
-//          else {
-//            historyExists = 0
-//            rl.write_history(HISTORY_FILE)
-//          }
-//        }
-//
-//        repl()
-//      }
-//    }
-//
-//    repl()
-//  }
+  Zone { implicit z =>
+    val homeDir      = System.getProperty("user.home")
+    val HISTORY_FILE = toCString(s"$homeDir/.dish_history")
+    val BUFSIZE      = 256.toUInt
 
-  def expand(pattern: String): List[String] = Zone { implicit z =>
-    val globbuf = stackalloc[GlobT]
-    val pathc   = stackalloc[CSize]
-    val pathv   = stackalloc[Ptr[CString]]
+    var historyExists = rl.read_history(HISTORY_FILE)
 
-    if (globHelper(toCString(pattern), globbuf, pathc, pathv) == 0) {
-      val list =
-        for (i <- 0 until (!pathc).toInt)
-          yield {
-            val array = !pathv
+    @tailrec
+    def repl(): Unit = {
+      import Console._
 
-            fromCString(array(i))
+      val cwd  = stackalloc[Byte](BUFSIZE)
+      val scwd = if (getcwd(cwd, BUFSIZE) == null) "" else fromCString(cwd)
+      val pcwd =
+        if (scwd startsWith homeDir) '~' +: (scwd drop homeDir.length)
+        else scwd
+      val prompt = s"$CYAN$pcwd$RESET> "
+      val line   = rl.readline(toCString(prompt))
+
+      if (line != null) {
+        val s = fromCString(line).trim
+
+        free(line)
+
+        if (s nonEmpty) {
+//          val commands = s.split('|').toList map (_.trim) map (_.split("\\s+") flatMap Globbing.expand toList)
+          val PipelineAST(commands) = CommandParser.parsePipeline(s)
+
+          commands.head match {
+            case CommandAST(_, "cd", List(ArgumentAST(_, dir)), Nil)  => chdir(toCString(dir))
+            case CommandAST(_, "cd", Nil, Nil)                        => chdir(toCString(homeDir))
+            case CommandAST(_, "cd", _, _)                            => println("invalid 'cd' command")
+            case CommandAST(_, "exit", List(ArgumentAST(_, st)), Nil) => sys.exit(toCString(st).toInt)
+            case CommandAST(_, "exit", Nil, Nil)                      => sys.exit()
+            case CommandAST(_, "exit", _, _)                          => println("invalid 'exit' command")
+            case _ =>
+              val cs = commands map {
+                case CommandAST(pos, cmd, args, redirs) =>
+                  cmd +: (args flatMap { case ArgumentAST(pos, arg) => Globbing.expand(arg) })
+              }
+
+              try {
+                pipeMany(STDIN_FILENO, STDOUT_FILENO, cs)
+              } catch {
+                case e: Exception =>
+              }
           }
 
-      val pglob = !globbuf
+          val prev = rl.history_get(rl.history_base + rl.history_length - 1)
 
-      globfree(pglob)
-      free(pglob)
-      list.toList
-    } else List(pattern)
+          if (prev == null || fromCString(!prev) != s) {
+            rl.add_history(toCString(s))
+
+            if (historyExists == 0)
+              rl.append_history(1, HISTORY_FILE)
+            else {
+              historyExists = 0
+              rl.write_history(HISTORY_FILE)
+            }
+          }
+        }
+
+        repl()
+      }
+    }
+
+    repl()
   }
 
   def pipeMany(input: Int, output: Int, procs: Seq[Seq[String]]): Int = {

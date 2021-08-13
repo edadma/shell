@@ -7,18 +7,16 @@ object CommandParser extends RegexParsers with PackratParsers {
   lazy val pos: PackratParser[Position] = positioned(success(new Positional {})) ^^ (_.pos)
 
   lazy val pipeline: PackratParser[PipelineAST] =
-    rep1sep(command, "|") ~ rep(redirection) ^^ {
-      case cs ~ rs => PipelineAST(cs, rs)
-    }
+    rep1sep(command, "|") ^^ PipelineAST
 
   lazy val redirection: PackratParser[RedirectionAST] =
-    pos ~ ("<" | ">") ~ argument ^^ {
+    pos ~ ("<" | ">" /*| ">>" | "2>" | "2>>"*/ ) ~ argument ^^ {
       case p ~ d ~ a => RedirectionAST(p, d, a)
     }
 
   lazy val command: PackratParser[CommandAST] =
-    pos ~ word ~ rep(argument) ^^ {
-      case p ~ c ~ as => CommandAST(p, c, as)
+    pos ~ word ~ rep(argument) ~ rep(redirection) ^^ {
+      case p ~ c ~ as ~ rs => CommandAST(p, c, as, rs)
     }
 
   lazy val argument: PackratParser[ArgumentAST] =

@@ -46,6 +46,10 @@ libraryDependencies ++= Seq(
 )
 
 libraryDependencies ++= Seq(
+  "xyz.hyperreal" %%% "snutils" % "0.1.0"
+)
+
+libraryDependencies ++= Seq(
   "com.github.scopt" %%% "scopt" % "4.0.1"
 )
 
