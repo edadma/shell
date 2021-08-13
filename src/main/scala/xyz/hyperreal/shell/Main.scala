@@ -10,7 +10,7 @@ import scala.scalanative.unsigned._
 
 import unistd._
 import waitlib._
-import xyz.hyperreal.shell.{GNUReadline => rl}
+import xyz.hyperreal.readline.{Readline => rl}
 import xyz.hyperreal.snutils.Globbing
 
 import scala.annotation.tailrec
