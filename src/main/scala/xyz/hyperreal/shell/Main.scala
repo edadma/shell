@@ -20,7 +20,7 @@ object Main extends App {
   val homeDir = System.getProperty("user.home")
 
   Zone { implicit z =>
-    val HISTORY_FILE = toCString(s"$homeDir/.dish_history")
+    val HISTORY_FILE = toCString(s"$homeDir/.shell_history")
     val BUFSIZE      = 256.toUInt
 
     var historyExists = rl.read_history(HISTORY_FILE)
@@ -43,7 +43,6 @@ object Main extends App {
         free(line)
 
         if (s nonEmpty) {
-//          val commands = s.split('|').toList map (_.trim) map (_.split("\\s+") flatMap Globbing.expand toList)
           val PipelineAST(commands) = CommandParser.parsePipeline(s)
 
           commands.head match {
