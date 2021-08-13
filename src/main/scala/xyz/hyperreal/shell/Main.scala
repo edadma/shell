@@ -17,10 +17,9 @@ import scala.annotation.tailrec
 import scala.collection.mutable
 
 object Main extends App {
-//  println(CommandParser.parsePipeline("grep asdf <input | sort >output"))
+  val homeDir = System.getProperty("user.home")
 
   Zone { implicit z =>
-    val homeDir      = System.getProperty("user.home")
     val HISTORY_FILE = toCString(s"$homeDir/.dish_history")
     val BUFSIZE      = 256.toUInt
 
@@ -48,7 +47,7 @@ object Main extends App {
           val PipelineAST(commands) = CommandParser.parsePipeline(s)
 
           commands.head match {
-            case CommandAST(_, "cd", List(ArgumentAST(_, dir)), Nil)  => chdir(toCString(dir))
+            case CommandAST(_, "cd", List(ArgumentAST(_, dir)), Nil)  => chdir(toCString(tilde(dir)))
             case CommandAST(_, "cd", Nil, Nil)                        => chdir(toCString(homeDir))
             case CommandAST(_, "cd", _, _)                            => println("invalid 'cd' command")
             case CommandAST(_, "exit", List(ArgumentAST(_, st)), Nil) => sys.exit(toCString(st).toInt)
@@ -57,7 +56,7 @@ object Main extends App {
             case _ =>
               val cs = commands map {
                 case CommandAST(pos, cmd, args, redirs) =>
-                  cmd +: (args flatMap { case ArgumentAST(pos, arg) => Globbing.expand(arg) })
+                  tilde(cmd) +: (args flatMap { case ArgumentAST(pos, arg) => Globbing.expand(tilde(arg)) })
               }
 
               try {
@@ -87,6 +86,10 @@ object Main extends App {
 
     repl()
   }
+
+  def tilde(s: String): String =
+    if (s startsWith "~") homeDir ++ (s drop 1)
+    else s
 
   def pipeMany(input: Int, output: Int, procs: Seq[Seq[String]]): Int = {
     val pipe_array = stackalloc[Int]((2 * (procs.size - 1)).toUInt)
