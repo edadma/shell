@@ -46,8 +46,8 @@ libraryDependencies ++= Seq(
 )
 
 libraryDependencies ++= Seq(
-  "xyz.hyperreal" %%% "snutils"  % "0.1.0",
-  "xyz.hyperreal" %%% "readline" % "0.1.0"
+  "xyz.hyperreal"    %%% "snutils"  % "0.1.0",
+  "io.github.edadma" %%% "readline" % "0.1.2"
 )
 
 libraryDependencies ++= Seq(

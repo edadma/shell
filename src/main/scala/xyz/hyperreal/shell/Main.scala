@@ -10,7 +10,7 @@ import scala.scalanative.unsigned._
 
 import unistd._
 import waitlib._
-import xyz.hyperreal.readline.{Readline => rl}
+import io.github.edadma.readline.facade._
 import xyz.hyperreal.snutils.Globbing
 
 import scala.annotation.tailrec
@@ -19,89 +19,86 @@ import scala.collection.mutable
 object Main extends App {
   val homeDir = System.getProperty("user.home")
 
-  Zone { implicit z =>
-    val HISTORY_FILE = toCString(s"$homeDir/.shell_history")
-    val BUFSIZE      = 256.toUInt
+  val HISTORY_FILE = s"$homeDir/.shell_history"
+  val BUFSIZE      = 256.toUInt
 
-    var historyExists = rl.read_history(HISTORY_FILE)
+  var historyExists = read_history(HISTORY_FILE)
 
-    @tailrec
-    def repl(): Unit = {
-      import Console._
+  @tailrec
+  def repl(): Unit = {
+    import Console._
 
-      val cwd  = stackalloc[Byte](BUFSIZE)
-      val scwd = if (getcwd(cwd, BUFSIZE) == null) "" else fromCString(cwd)
-      val pcwd =
-        if (scwd startsWith homeDir) '~' +: (scwd drop homeDir.length)
-        else scwd
-      val prompt = s"$CYAN$pcwd$RESET> "
-      val line   = rl.readline(toCString(prompt))
+    val cwd  = stackalloc[Byte](BUFSIZE)
+    val scwd = if (getcwd(cwd, BUFSIZE) == null) "" else fromCString(cwd)
+    val pcwd =
+      if (scwd startsWith homeDir) '~' +: (scwd drop homeDir.length)
+      else scwd
+    val prompt = s"$CYAN$pcwd$RESET> "
+    val line   = readline(prompt)
 
-      if (line != null) {
-        val s = fromCString(line).trim
+    if (line != null) {
+      val s = line.trim
 
-        free(line)
+      if (s nonEmpty) {
+        val prev = history_get(history_base + history_length - 1)
 
-        if (s nonEmpty) {
-          val prev = rl.history_get(rl.history_base + rl.history_length - 1)
+        if (prev == null || prev != s) {
+          add_history(s)
 
-          if (prev == null || fromCString(!prev) != s) {
-            rl.add_history(toCString(s))
-
-            if (historyExists == 0)
-              rl.append_history(1, HISTORY_FILE)
-            else {
-              historyExists = 0
-              rl.write_history(HISTORY_FILE)
-            }
-          }
-
-          try {
-            val PipelineAST(commands) = CommandParser.parsePipeline(s)
-
-            commands.head match {
-              case CommandAST(_, "cd", List(ArgumentAST(_, dir)), Nil)  => chdir(toCString(tilde(dir)))
-              case CommandAST(_, "cd", Nil, Nil)                        => chdir(toCString(homeDir))
-              case CommandAST(_, "cd", _, _)                            => println("invalid 'cd' command")
-              case CommandAST(_, "exit", List(ArgumentAST(_, st)), Nil) => sys.exit(toCString(st).toInt)
-              case CommandAST(_, "exit", Nil, Nil)                      => sys.exit()
-              case CommandAST(_, "exit", _, _)                          => println("invalid 'exit' command")
-              case _ =>
-                commands.init foreach {
-                  _.redirs foreach {
-                    case RedirectionAST(pos, ">" | ">>", _) =>
-                      problem(pos, "output redirection not allowed here")
-                    case _ =>
-                  }
-                }
-
-                commands.tail foreach {
-                  _.redirs foreach {
-                    case RedirectionAST(pos, "<", _) =>
-                      problem(pos, "input redirection not allowed here")
-                    case _ =>
-                  }
-                }
-
-                val cs = commands map {
-                  case CommandAST(pos, cmd, args, redirs) =>
-                    tilde(cmd) +: (args flatMap { case ArgumentAST(pos, arg) => Globbing.expand(tilde(arg)) })
-                }
-
-                pipeMany(STDIN_FILENO, STDOUT_FILENO, cs)
-            }
-          } catch {
-            case e: RuntimeException if e.getClass.getName == "java.lang.RuntimeException" =>
-            case e: Throwable                                                              => e.printStackTrace()
+          if (historyExists == 0)
+            append_history(1, HISTORY_FILE)
+          else {
+            historyExists = 0
+            write_history(HISTORY_FILE)
           }
         }
 
-        repl()
-      }
-    }
+        try {
+          val PipelineAST(commands) = CommandParser.parsePipeline(s)
 
-    repl()
+          commands.head match {
+            case CommandAST(_, "cd", List(ArgumentAST(_, dir)), Nil) => Zone(implicit z => chdir(toCString(tilde(dir))))
+            case CommandAST(_, "cd", Nil, Nil)                       => Zone(implicit z => chdir(toCString(homeDir)))
+            case CommandAST(_, "cd", _, _)                           => println("invalid 'cd' command")
+            case CommandAST(_, "exit", List(ArgumentAST(_, st)), Nil) =>
+              Zone(implicit z => sys.exit(toCString(st).toInt))
+            case CommandAST(_, "exit", Nil, Nil) => sys.exit()
+            case CommandAST(_, "exit", _, _)     => println("invalid 'exit' command")
+            case _ =>
+              commands.init foreach {
+                _.redirs foreach {
+                  case RedirectionAST(pos, ">" | ">>", _) =>
+                    problem(pos, "output redirection not allowed here")
+                  case _ =>
+                }
+              }
+
+              commands.tail foreach {
+                _.redirs foreach {
+                  case RedirectionAST(pos, "<", _) =>
+                    problem(pos, "input redirection not allowed here")
+                  case _ =>
+                }
+              }
+
+              val cs = commands map {
+                case CommandAST(pos, cmd, args, redirs) =>
+                  tilde(cmd) +: (args flatMap { case ArgumentAST(pos, arg) => Globbing.expand(tilde(arg)) })
+              }
+
+              pipeMany(STDIN_FILENO, STDOUT_FILENO, cs)
+          }
+        } catch {
+          case e: RuntimeException if e.getClass.getName == "java.lang.RuntimeException" =>
+          case e: Throwable                                                              => e.printStackTrace()
+        }
+      }
+
+      repl()
+    }
   }
+
+  repl()
 
   def tilde(s: String): String =
     if (s startsWith "~") homeDir ++ (s drop 1)
@@ -271,7 +268,7 @@ object Main extends App {
       if (r != 0) {
         val err = errno
 
-        printf(s"error: $err ${fromCString(strerror(err))}\n")
+        println(s"error: $err ${fromCString(strerror(err))}")
         throw new Exception(s"bad execve: returned $r")
       } else 0
     }
